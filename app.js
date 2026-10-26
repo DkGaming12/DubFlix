@@ -86,6 +86,35 @@ function renderPlaylist(id) {
 
 // ─── Render: Watch ───────────────────────────────────────────────────────────
 let watchTimer = null;
+// Update status "ditonton" TANPA me-render ulang halaman.
+// (Bug lama: renderWatch() dipanggil ulang setelah 60 detik & saat tombol
+//  ditandai ditekan -> elemen <video> dibuat dari nol -> putar ulang dari awal.)
+function updateWButton(code) {
+  const btn = document.getElementById('wbtn');
+  if (!btn) return;
+  const on = !!getW()[code];
+  btn.className = on ? 'done' : '';
+  btn.textContent = on ? '✓ Sudah Ditonton' : 'Tandai Ditonton';
+}
+function markRowWatched(code) {
+  document.querySelectorAll('.eprow.cur').forEach(r => {
+    if (!r.querySelector('.ck')) {
+      const s = document.createElement('span');
+      s.className = 'ck'; s.textContent = '✓';
+      r.appendChild(s);
+    }
+  });
+}
+function markWatched(code) {
+  setW(code, true);
+  updateWButton(code);
+  markRowWatched(code);
+}
+function toggleW(code) {
+  setW(code, !getW()[code]);
+  updateWButton(code);
+  if (getW()[code]) markRowWatched(code);
+}
 function renderWatch(code) {
   const info = EP[code];
   if (!info) { location.hash = '#/'; return; }
@@ -98,7 +127,8 @@ function renderWatch(code) {
   const isW  = !!getW()[code];
   if (watchTimer) clearTimeout(watchTimer);
   watchTimer = setTimeout(() => {
-    if ((location.hash || '') === '#/w/' + code) { setW(code, true); renderWatch(code); }
+    // Cukup tandai sebagai ditonton — JANGAN render ulang (player ke-reset).
+    if ((location.hash || '') === '#/w/' + code) markWatched(code);
   }, 60000);
   const qs    = ['720', '480', '360', '240'].filter(q => e.v && e.v[q]);
   const prefQ = store.get('q', '720');
@@ -118,12 +148,39 @@ function renderWatch(code) {
       <h2>EPS ${info.i + 1} — ${e.s}</h2>
       <div class="wnav">
         <button ${prev ? `onclick="location.hash='#/w/${prev.c}'"` : 'disabled'}>← Prev</button>
-        <button onclick="setW('${code}',${!isW});renderWatch('${code}')" class="${isW ? 'done' : ''}">${isW ? '✓ Sudah Ditonton' : 'Tandai Ditonton'}</button>
+        <button id="wbtn" onclick="toggleW('${code}')" class="${isW ? 'done' : ''}">${isW ? '✓ Sudah Ditonton' : 'Tandai Ditonton'}</button>
         <button ${next ? `onclick="location.hash='#/w/${next.c}'"` : 'disabled'}>Next →</button>
       </div>
     </div>
     <h2 class="sec"><span class="bar"></span>Episode Lainnya — ${p.short}</h2>
     <div class="eplist">${rows}</div>`;
+  // Simpan posisi putar tiap 5 detik & pulihkan saat halaman dibuka lagi,
+  // jadi kalaupun player/browser ke-reload, tidak mulai dari awal.
+  const vid = document.getElementById('vid');
+  if (vid) {
+    const saved = store.get('pos', {})[code];
+    if (saved && saved > 5) {
+      vid.addEventListener('loadedmetadata', () => {
+        try { if (vid.duration && saved < vid.duration - 5) vid.currentTime = saved; } catch (err) {}
+      }, { once: true });
+    }
+    let lastSave = 0;
+    vid.addEventListener('timeupdate', () => {
+      const now = Date.now();
+      if (now - lastSave < 5000) return;
+      lastSave = now;
+      const pos = store.get('pos', {});
+      if (vid.currentTime > 5 && vid.duration && vid.currentTime < vid.duration - 10) pos[code] = Math.floor(vid.currentTime);
+      else delete pos[code];
+      store.set('pos', pos);
+    });
+    vid.addEventListener('ended', () => {
+      const pos = store.get('pos', {});
+      delete pos[code];
+      store.set('pos', pos);
+      markWatched(code);
+    });
+  }
 }
 
 // ─── Render: Search ──────────────────────────────────────────────────────────
