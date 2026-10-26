@@ -60,6 +60,18 @@ h2.sec .bar{width:4px;height:20px;background:var(--grn);border-radius:2px;displa
 .qrow{display:flex;align-items:center;gap:8px;margin:12px 2px 0;font-size:13px;color:var(--mut)}
 .qrow button{background:var(--card);border:1px solid var(--line);color:var(--txt);padding:7px 15px;border-radius:9px;cursor:pointer;font-size:13px;font-weight:700}
 .qrow button.on{background:var(--grn);color:#04120a;border-color:var(--grn)}
+.srow{display:flex;align-items:center;gap:8px;margin:10px 2px 0;font-size:13px;color:var(--mut);flex-wrap:wrap}
+.srow button{background:var(--card);border:1px solid var(--line);color:var(--txt);padding:7px 13px;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600}
+.srow button:hover{border-color:var(--grn);color:var(--grn)}
+.srow .st{color:var(--txt)}
+#subpanel{margin:10px 2px 0}
+#subpanel .box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;font-size:13.5px;line-height:1.55}
+#subpanel .box input{width:100%;box-sizing:border-box;margin:8px 0;padding:9px 11px;border-radius:9px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font-size:13.5px}
+#subpanel .box button{background:var(--grn);color:#04120a;border:none;padding:9px 16px;border-radius:9px;cursor:pointer;font-weight:700;font-size:13.5px}
+#subpanel .sres{display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);color:var(--txt);padding:10px 13px;border-radius:10px;cursor:pointer;font-size:13px;margin-top:8px}
+#subpanel .sres:hover{border-color:var(--grn)}
+#subpanel .sres small{color:var(--mut);white-space:nowrap}
+#subpanel a{color:var(--grn)}
 .winfo{display:flex;align-items:flex-start;gap:14px;margin:16px 0;flex-wrap:wrap}
 .winfo h2{font-size:19px;flex:1;min-width:220px}
 .wnav{display:flex;gap:10px;flex-wrap:wrap}

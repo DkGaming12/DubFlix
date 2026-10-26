@@ -144,6 +144,8 @@ function renderWatch(code) {
     <div class="back" onclick="location.hash='#/p/${p.id}'">← ${p.name}</div>
     <div class="player"><video id="vid" controls playsinline preload="metadata" poster="${e.th || ''}" src="${e.v[curQ]}"></video></div>
     <div class="qrow"><span>Kualitas:</span>${qbtns}</div>
+    <div class="srow"><span>Subtitle:</span><span class="st" id="substat">…</span><button onclick="subSearch('${code}')">🔍 Cari Subtitle Indonesia</button><button id="suboff" onclick="subOff()" style="display:none">Matikan</button></div>
+    <div id="subpanel"></div>
     <div class="winfo">
       <h2>EPS ${info.i + 1} — ${e.s}</h2>
       <div class="wnav">
@@ -180,7 +182,145 @@ function renderWatch(code) {
       store.set('pos', pos);
       markWatched(code);
     });
+    subInit(code, p, e, info);
   }
+}
+
+// ─── Subtitle: bawaan + pencarian online (OpenSubtitles) ────────────────────
+// Metadata pencarian per playlist: judul seri + nomor season di database subtitle.
+const SUB_META = {
+  '2Ruq2ULIPAi9cdK': { q: 'Ben 10 Alien Force', s: 1 }, 'Psr8oZV5KKb4rhF': { q: 'Ben 10 Alien Force', s: 2 },
+  'vqGlBBetTcA8yYg': { q: 'Ben 10 Alien Force', s: 3 },
+  'ultimate-alien-s1': { q: 'Ben 10 Ultimate Alien', s: 1 },
+  'ultimate-alien-s1-en': { q: 'Ben 10 Ultimate Alien', s: 1 },
+  'ultimate-alien-s2-en': { q: 'Ben 10 Ultimate Alien', s: 2 },
+  'ultimate-alien-s3-en': { q: 'Ben 10 Ultimate Alien', s: 3 },
+  'classic-s1': { q: 'Ben 10', s: 1 }, 'classic-s2': { q: 'Ben 10', s: 2 },
+  'classic-s3': { q: 'Ben 10', s: 3 }, 'classic-s4': { q: 'Ben 10', s: 4 },
+  'Gwe6Ikh2CNQk2Ql': { q: 'Ben 10 Omniverse', s: 2 }, '74UmHRrHoZbHEQ3': { q: 'Ben 10 Omniverse', s: 3 },
+  'FgZ71cUz4MpB73T': { q: 'Ben 10 Omniverse', s: 4 }, 'jm77zbfSlcTxWje': { q: 'Ben 10 Omniverse', s: 5 },
+  'ToonfV1Lrwgly36': { q: 'Ben 10 Omniverse', s: 6 }, 'iwyBxUKHrTJhhjG': { q: 'Ben 10 Omniverse', s: 7 },
+  'Zc9VZxmzb2rqXsR': { q: 'Ben 10 Omniverse', s: 8 }
+};
+let subState = { code: null, meta: null, epNo: 0 };
+let subLastItems = null;
+
+function srtToVtt(txt) {
+  let t = String(txt).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  t = t.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+  t = t.replace(/^(\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3})[^\n]*$/gm, '$1');
+  if (!/^WEBVTT/.test(t)) t = 'WEBVTT\n\n' + t.replace(/^\s+/, '');
+  return t;
+}
+function subStatus(msg) { const el = document.getElementById('substat'); if (el) el.textContent = msg; }
+function subApply(src, label, lang, isText) {
+  const v = document.getElementById('vid'); if (!v) return;
+  v.querySelectorAll('track.dynsub').forEach(t => t.remove());
+  const tr = document.createElement('track');
+  tr.className = 'dynsub'; tr.kind = 'subtitles'; tr.label = label; tr.srclang = lang || 'id'; tr.default = true;
+  tr.src = isText ? URL.createObjectURL(new Blob([srtToVtt(src)], { type: 'text/vtt' })) : src;
+  v.appendChild(tr);
+  const show = () => { try { if (tr.track) tr.track.mode = 'showing'; } catch (err) {} };
+  tr.addEventListener('load', show); show(); setTimeout(show, 600);
+  const off = document.getElementById('suboff'); if (off) off.style.display = '';
+  subStatus(label + ' — aktif ✓');
+}
+function subOff() {
+  const v = document.getElementById('vid'); if (!v) return;
+  for (const t of v.textTracks) t.mode = 'disabled';
+  const off = document.getElementById('suboff'); if (off) off.style.display = 'none';
+  subStatus('Mati');
+}
+function subInit(code, p, e, info) {
+  subState = { code, meta: SUB_META[p.id] || null, epNo: info.i + 1 };
+  if (e.sub) {
+    subApply(e.sub, 'Indonesia (bawaan)', 'id', false);
+    if (e.suben) {
+      const v = document.getElementById('vid');
+      if (v) {
+        const tr = document.createElement('track');
+        tr.className = 'dynsub'; tr.kind = 'subtitles'; tr.label = 'English (bawaan)'; tr.srclang = 'en'; tr.src = e.suben;
+        v.appendChild(tr);
+        setTimeout(() => { try { if (tr.track) tr.track.mode = 'hidden'; } catch (err) {} }, 600);
+      }
+    }
+    return;
+  }
+  const cache = store.get('subcache', {})[code];
+  if (cache && cache.text) { subApply(cache.text, cache.label, cache.lang, true); return; }
+  if (store.get('oskey', '')) { subStatus('Mencari subtitle Indonesia…'); subFetchList(true); }
+  else subStatus('Belum ada — klik Cari Subtitle');
+}
+async function subFetchList(auto) {
+  const key = store.get('oskey', '');
+  const panel = document.getElementById('subpanel');
+  if (!key) { subShowKeyForm(); return null; }
+  if (!subState.meta) { subStatus('Seri ini belum ada metadata pencarian'); return null; }
+  const { q, s } = subState.meta, ep = subState.epNo;
+  const url = 'https://api.opensubtitles.com/api/v1/subtitles?query=' + encodeURIComponent(q) +
+    '&season_number=' + s + '&episode_number=' + ep + '&languages=id,en&order_by=download_count&order_direction=desc';
+  let res;
+  try {
+    res = await fetch(url, { headers: { 'Api-Key': key, 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+  } catch (err) {
+    subStatus('Pencarian gagal (' + err.message + ') — cek API key/koneksi');
+    return null;
+  }
+  const data = await res.json().catch(() => null);
+  const items = ((data && data.data) || []).filter(x => x.attributes && x.attributes.files && x.attributes.files.length);
+  if (!items.length) { subStatus('Subtitle tidak ditemukan untuk episode ini'); if (panel) panel.innerHTML = ''; return null; }
+  items.sort((a, b) => ((b.attributes.language === 'id') - (a.attributes.language === 'id')) ||
+    ((b.attributes.download_count || 0) - (a.attributes.download_count || 0)));
+  subLastItems = items;
+  if (auto) { await subPick(items[0].attributes.files[0].file_id); return items; }
+  if (panel) panel.innerHTML = '<div class="box"><b>Pilih subtitle</b> — ' + esc(q) + ' S' + s + 'E' + ep +
+    items.map((x, i) => { const a = x.attributes; return `<button class="sres" onclick="subPick(${a.files[0].file_id}, ${i})"><span>${esc(a.release || a.files[0].file_name || 'subtitle')}</span><small>${a.language === 'id' ? '🇮🇩 Indonesia' : '🇬🇧 English'} • ⬇ ${a.download_count || 0}</small></button>`; }).join('') + '</div>';
+  return items;
+}
+async function subSearch(code) {
+  if (!store.get('oskey', '')) { subShowKeyForm(); return; }
+  subStatus('Mencari subtitle…');
+  await subFetchList(false);
+  subStatus('Pilih subtitle di bawah 👇');
+}
+function subShowKeyForm() {
+  const panel = document.getElementById('subpanel'); if (!panel) return;
+  subStatus('Butuh API key OpenSubtitles (gratis, sekali atur)');
+  panel.innerHTML = `<div class="box"><b>Cari Subtitle Otomatis — sekali pengaturan</b><br>
+    1. Daftar gratis di <a href="https://www.opensubtitles.com/en/users/sign_up" target="_blank" rel="noopener">opensubtitles.com</a><br>
+    2. Buka <a href="https://www.opensubtitles.com/en/consumers" target="_blank" rel="noopener">API Consumers</a> → buat consumer → salin <b>API Key</b>-nya<br>
+    3. Tempel di sini (tersimpan di browser ini saja, tidak dikirim ke mana-mana selain OpenSubtitles):
+    <input id="oskeyin" placeholder="tempel API key di sini" autocomplete="off">
+    <button onclick="subSaveKey()">Simpan &amp; Cari Subtitle</button></div>`;
+}
+function subSaveKey() {
+  const v = (document.getElementById('oskeyin') || {}).value || '';
+  if (!v.trim()) return;
+  store.set('oskey', v.trim());
+  const panel = document.getElementById('subpanel'); if (panel) panel.innerHTML = '';
+  subStatus('Mencari subtitle Indonesia…');
+  subFetchList(true);
+}
+async function subPick(fileId) {
+  const key = store.get('oskey', '');
+  subStatus('Mengunduh subtitle…');
+  try {
+    const res = await fetch('https://api.opensubtitles.com/api/v1/download', {
+      method: 'POST',
+      headers: { 'Api-Key': key, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ file_id: fileId, sub_format: 'srt' })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d = await res.json();
+    const txt = await (await fetch(d.link)).text();
+    const item = (subLastItems || []).find(x => x.attributes.files[0].file_id === fileId);
+    const lang = item ? item.attributes.language : 'id';
+    const label = (lang === 'id' ? 'Indonesia' : 'English') + ' (online)';
+    const cache = store.get('subcache', {}); cache[subState.code] = { text: txt, label, lang }; store.set('subcache', cache);
+    const panel = document.getElementById('subpanel'); if (panel) panel.innerHTML = '';
+    subApply(txt, label, lang, true);
+  } catch (err) { subStatus('Unduh gagal (' + err.message + ')'); }
 }
 
 // ─── Render: Search ──────────────────────────────────────────────────────────
