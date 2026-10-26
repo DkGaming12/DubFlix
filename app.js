@@ -130,7 +130,7 @@ function renderWatch(code) {
     // Cukup tandai sebagai ditonton — JANGAN render ulang (player ke-reset).
     if ((location.hash || '') === '#/w/' + code) markWatched(code);
   }, 60000);
-  const qs    = ['720', '480', '360', '240'].filter(q => e.v && e.v[q]);
+  const qs    = ['1080', '720', '480', '360', '240'].filter(q => e.v && e.v[q]);
   const prefQ = store.get('q', '720');
   const curQ  = (e.v && e.v[prefQ]) ? prefQ : qs[0];
   const qbtns = qs.map(q => `<button class="${q === curQ ? 'on' : ''}" onclick="setQ('${code}','${q}')">${q}p</button>`).join('');
